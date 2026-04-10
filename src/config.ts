@@ -8,7 +8,8 @@ async function loadConfig(): Promise<{ apiUrl: string }> {
     // Try to load config from public/config.json (set by Docker at runtime)
     const response = await fetch("/config.json");
     if (response.ok) {
-      cachedConfig = await response.json();
+      const config = await response.json();
+      cachedConfig = config as { apiUrl: string };
       return cachedConfig;
     }
   } catch (e) {
@@ -16,8 +17,9 @@ async function loadConfig(): Promise<{ apiUrl: string }> {
   }
 
   // Fallback to localhost
-  cachedConfig = { apiUrl: "http://localhost:8000" };
-  return cachedConfig;
+  const defaultConfig: { apiUrl: string } = { apiUrl: "http://localhost:8000" };
+  cachedConfig = defaultConfig;
+  return defaultConfig;
 }
 
 export async function getApiUrl(): Promise<string> {
