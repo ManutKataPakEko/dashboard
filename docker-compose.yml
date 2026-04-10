@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: attack-detection-dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      # Update API_URL if your backend API is running in a different location
+      - VITE_API_URL=http://localhost:8000
+    restart: unless-stopped
+    networks:
+      - dashboard-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+networks:
+  dashboard-network:
+    driver: bridge
