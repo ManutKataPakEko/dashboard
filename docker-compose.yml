@@ -10,8 +10,8 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      # Update API_URL if your backend API is running in a different location
-      - VITE_API_URL=http://localhost:8000
+      # Pass your backend API URL here - change before deploy!
+      - API_URL=${API_URL:-http://localhost:8000}
     restart: unless-stopped
     networks:
       - dashboard-network
@@ -25,3 +25,7 @@ services:
 networks:
   dashboard-network:
     driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16

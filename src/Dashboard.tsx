@@ -8,8 +8,8 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from "recharts";
+import { getApiUrl } from "./config";
 
-const API = "http://localhost:8000";
 const fmt = (n?: number | null): string => (n ?? 0).toLocaleString("id-ID");
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -284,6 +284,7 @@ export default function Dashboard() {
       setLoading(true);
       setError(null);
       try {
+        const API = await getApiUrl();
         const qs = `date_from=${from}&date_to=${to}`;
         const [s, p] = await Promise.all([
           fetch(`${API}/api/stats?${qs}`).then((r) => r.json() as Promise<Stats>),
@@ -313,6 +314,7 @@ export default function Dashboard() {
     id: string,
     label: "Attack" | "Normal" | null
   ): Promise<void> => {
+    const API = await getApiUrl();
     const body = label === null ? { label: "Normal" } : { label };
     try {
       await fetch(`${API}/api/predictions/${id}/label`, {
