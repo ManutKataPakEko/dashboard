@@ -26,10 +26,9 @@ RUN npm install -g serve
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
 
-# Create startup script that generates config.json from environment variable
-RUN echo '#!/bin/sh\n\
-echo "{\"apiUrl\": \"${API_URL:-http://localhost:8000}\"}" > /app/dist/config.json\n\
-serve -s dist -l 3000' > /app/start.sh && chmod +x /app/start.sh
+# Copy startup script
+COPY start.sh /app/start.sh
+RUN chmod +x /app/start.sh
 
 # Expose port
 EXPOSE 3000
