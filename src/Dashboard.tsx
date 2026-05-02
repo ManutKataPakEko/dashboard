@@ -47,6 +47,9 @@ interface PredictionItem {
   path: string;
   prediction: "Attack" | "Normal";
   label: "Attack" | "Normal" | null;
+  body?: string;
+  headers?: Record<string, string>;
+  query?: string;
 }
 
 interface PredictionsResponse {
@@ -183,9 +186,10 @@ function ThumbButton({ icon, active, title, onClick }: ThumbButtonProps) {
 interface PredictionRowProps {
   item: PredictionItem;
   onLabel: (id: string, label: "Attack" | "Normal" | null) => void;
+  onShowDetails: (item: PredictionItem) => void;
 }
 
-function PredictionRow({ item, onLabel }: PredictionRowProps) {
+function PredictionRow({ item, onLabel, onShowDetails }: PredictionRowProps) {
   const labeledNorm = item.label === "Normal";
   const labeledAtk = item.label === "Attack";
   const time = item.created_at
@@ -229,6 +233,29 @@ function PredictionRow({ item, onLabel }: PredictionRowProps) {
         )}
       </td>
       <td style={{ padding: "9px 12px", textAlign: "center", whiteSpace: "nowrap" }}>
+        <button
+          onClick={() => onShowDetails(item)}
+          style={{
+            border: "1px solid #E5E7EB",
+            background: "#F9FAFB",
+            color: "#374151",
+            padding: "4px 8px",
+            borderRadius: 4,
+            fontSize: 11,
+            fontWeight: 600,
+            cursor: "pointer",
+            marginRight: 6,
+            transition: "all 0.15s",
+          }}
+          onMouseEnter={(e) => {
+            (e.target as HTMLButtonElement).style.background = "#E5E7EB";
+          }}
+          onMouseLeave={(e) => {
+            (e.target as HTMLButtonElement).style.background = "#F9FAFB";
+          }}
+        >
+          Detail
+        </button>
         <ThumbButton
           icon="👍"
           active={labeledNorm}
@@ -243,6 +270,179 @@ function PredictionRow({ item, onLabel }: PredictionRowProps) {
         />
       </td>
     </tr>
+  );
+}
+
+interface DetailsModalProps {
+  item: PredictionItem | null;
+  onClose: () => void;
+}
+
+function DetailsModal({ item, onClose }: DetailsModalProps) {
+  if (!item) return null;
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        onClick={onClose}
+        style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(0, 0, 0, 0.5)",
+          zIndex: 999,
+        }}
+      />
+      {/* Modal */}
+      <div
+        style={{
+          position: "fixed",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+          background: "#fff",
+          borderRadius: 12,
+          border: "1px solid #E5E7EB",
+          boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1)",
+          maxWidth: "90%",
+          maxHeight: "90vh",
+          overflow: "auto",
+          zIndex: 1000,
+          padding: 0,
+        }}
+      >
+        {/* Header */}
+        <div
+          style={{
+            padding: "16px 20px",
+            borderBottom: "1px solid #E5E7EB",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            position: "sticky",
+            top: 0,
+            background: "#F9FAFB",
+          }}
+        >
+          <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#111827" }}>
+            Detail Request
+          </h3>
+          <button
+            onClick={onClose}
+            style={{
+              border: "none",
+              background: "none",
+              fontSize: 20,
+              cursor: "pointer",
+              color: "#9CA3AF",
+              padding: 0,
+              width: 24,
+              height: 24,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Content */}
+        <div style={{ padding: "20px" }}>
+          {/* Meta info */}
+          <div style={{ marginBottom: 20 }}>
+            <h4 style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Informasi Umum
+            </h4>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, fontSize: 12 }}>
+              <div>
+                <span style={{ color: "#9CA3AF", display: "block", marginBottom: 2 }}>ID</span>
+                <code style={{ background: "#F3F4F6", padding: "4px 8px", borderRadius: 4, display: "block", wordBreak: "break-all", color: "#374151" }}>
+                  {item.id}
+                </code>
+              </div>
+              <div>
+                <span style={{ color: "#9CA3AF", display: "block", marginBottom: 2 }}>Waktu</span>
+                <span style={{ color: "#374151" }}>{item.created_at}</span>
+              </div>
+              <div>
+                <span style={{ color: "#9CA3AF", display: "block", marginBottom: 2 }}>IP</span>
+                <code style={{ background: "#F3F4F6", padding: "4px 8px", borderRadius: 4, color: "#374151" }}>
+                  {item.ip}
+                </code>
+              </div>
+              <div>
+                <span style={{ color: "#9CA3AF", display: "block", marginBottom: 2 }}>Method</span>
+                <span style={{ fontWeight: 600, color: "#111827" }}>{item.method}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Request line */}
+          <div style={{ marginBottom: 20 }}>
+            <h4 style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Request Line
+            </h4>
+            <div style={{ background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 6, padding: 10, fontSize: 11 }}>
+              <p style={{ margin: 0, color: "#374151", wordBreak: "break-all" }}>
+                <span style={{ fontWeight: 600, color: "#A32D2D" }}>{item.method}</span>{" "}
+                <span style={{ color: "#111827" }}>{item.path}{item.query ? `?${item.query}` : ""}</span>
+              </p>
+            </div>
+          </div>
+
+          {/* Headers */}
+          {item.headers && Object.keys(item.headers).length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <h4 style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Headers
+              </h4>
+              <div style={{ background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 6, padding: 10, fontSize: 11, fontFamily: "monospace", overflow: "auto", maxHeight: 200 }}>
+                {Object.entries(item.headers).map(([k, v]) => (
+                  <div key={k} style={{ marginBottom: 4, display: "flex", gap: 8 }}>
+                    <span style={{ color: "#A32D2D", fontWeight: 600, minWidth: "max-content" }}>{k}:</span>
+                    <span style={{ color: "#374151", wordBreak: "break-all" }}>{v}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Body */}
+          {item.body && (
+            <div style={{ marginBottom: 20 }}>
+              <h4 style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Body
+              </h4>
+              <div style={{ background: "#F9FAFB", border: "1px solid #E5E7EB", borderRadius: 6, padding: 10, fontSize: 11, fontFamily: "monospace", overflow: "auto", maxHeight: 300 }}>
+                <pre style={{ margin: 0, color: "#374151", wordBreak: "break-all", whiteSpace: "pre-wrap" }}>
+                  {item.body}
+                </pre>
+              </div>
+            </div>
+          )}
+
+          {/* Prediction & Label */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <span style={{ color: "#9CA3AF", display: "block", marginBottom: 4, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Prediksi Model
+              </span>
+              <Badge value={item.prediction} />
+            </div>
+            <div>
+              <span style={{ color: "#9CA3AF", display: "block", marginBottom: 4, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Label Admin
+              </span>
+              {item.label ? <Badge value={item.label} /> : <span style={{ color: "#D1D5DB" }}>—</span>}
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -278,6 +478,7 @@ export default function Dashboard() {
   const [page, setPage] = useState<number>(1);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedItem, setSelectedItem] = useState<PredictionItem | null>(null);
 
   const fetchAll = useCallback(
     async (pg: number = 1) => {
@@ -741,7 +942,7 @@ export default function Dashboard() {
                 </thead>
                 <tbody>
                   {preds.items.map((item) => (
-                    <PredictionRow key={item.id} item={item} onLabel={handleLabel} />
+                    <PredictionRow key={item.id} item={item} onLabel={handleLabel} onShowDetails={setSelectedItem} />
                   ))}
                 </tbody>
               </table>
@@ -817,6 +1018,9 @@ export default function Dashboard() {
           ATTACK DETECTION DASHBOARD · DATA DIGUNAKAN UNTUK RETRAIN MODEL
         </p>
       </div>
+
+      {/* Details Modal */}
+      <DetailsModal item={selectedItem} onClose={() => setSelectedItem(null)} />
     </div>
   );
 }
