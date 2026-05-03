@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import {
   BarChart,
   Bar,
@@ -66,10 +66,12 @@ interface ChartEntry {
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function useDateRange() {
-  const today = new Date().toISOString().slice(0, 10);
-  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
-  const [from, setFrom] = useState<string>(weekAgo);
-  const [to, setTo] = useState<string>(today);
+  const [from, setFrom] = useState<string>(() => {
+    return new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+  });
+  const [to, setTo] = useState<string>(() => {
+    return new Date().toISOString().slice(0, 10);
+  });
   return { from, to, setFrom, setTo };
 }
 
@@ -474,42 +476,72 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
 export default function Dashboard() {
   const { from, to, setFrom, setTo } = useDateRange();
   const [stats, setStats] = useState<Stats | null>(null);
-  const [preds, setPreds] = useState<PredictionsResponse | null>(null);
+  const [predictions, setPredictions] = useState<PredictionItem[]>([]);
+  const [totalItems, setTotalItems] = useState<number>(0);
   const [page, setPage] = useState<number>(1);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<PredictionItem | null>(null);
+  const [filterStatus, setFilterStatus] = useState<"all" | "labeled" | "unlabeled">("all");
 
-  const fetchAll = useCallback(
-    async (pg: number = 1) => {
+  const pageSize = 30;
+  const totalPages = Math.ceil(totalItems / pageSize);
+  const paginatedItems = predictions;
+
+  // Fetch only current page from server — no client-side loop
+  useEffect(() => {
+    const abortController = new AbortController();
+
+    const fetchData = async () => {
       setLoading(true);
       setError(null);
       try {
         const API = await getApiUrl();
-        const qs = `date_from=${from}&date_to=${to}`;
-        const [s, p] = await Promise.all([
-          fetch(`${API}/api/stats?${qs}`).then((r) => r.json() as Promise<Stats>),
-          fetch(`${API}/api/predictions?${qs}&page=${pg}&page_size=30`).then(
-            (r) => r.json() as Promise<PredictionsResponse>
-          ),
+
+        // Build query params including filter and pagination
+        const labelFilter =
+          filterStatus === "labeled" ? "&labeled=true"
+          : filterStatus === "unlabeled" ? "&labeled=false"
+          : "";
+
+        const qs = `date_from=${from}&date_to=${to}${labelFilter}&page=${page}&page_size=${pageSize}`;
+
+        // Single fetch — only the current page
+        const [predictionsRes, statsData] = await Promise.all([
+          fetch(`${API}/api/predictions?${qs}`, { signal: abortController.signal })
+            .then((r) => r.json() as Promise<PredictionsResponse>),
+          fetch(`${API}/api/stats?date_from=${from}&date_to=${to}`, { signal: abortController.signal })
+            .then((r) => r.json() as Promise<Stats>),
         ]);
-        setStats(s);
-        setPreds(p);
-        setPage(pg);
-      } catch {
-        setError(
-          "Tidak bisa terhubung ke API. Pastikan server berjalan di port 8000."
-        );
+
+        if (abortController.signal.aborted) return;
+
+        setStats(statsData);
+        setPredictions(predictionsRes.items ?? []);
+        setTotalItems(predictionsRes.total ?? 0);
+      } catch (err) {
+        if (err instanceof Error && err.name !== "AbortError") {
+          setError(
+            "Tidak bisa terhubung ke API. Pastikan server berjalan di port 8000."
+          );
+        }
       } finally {
         setLoading(false);
       }
-    },
-    [from, to]
-  );
+    };
 
-  useEffect(() => {
-    fetchAll(1);
-  }, [fetchAll]);
+    fetchData();
+
+    return () => {
+      abortController.abort();
+    };
+  }, [from, to, page, filterStatus]); // re-fetch when page or filter changes
+
+  // Reset to page 1 when filter changes
+  const handleFilterChange = (newFilter: "all" | "labeled" | "unlabeled") => {
+    setFilterStatus(newFilter);
+    setPage(1);
+  };
 
   const handleLabel = async (
     id: string,
@@ -527,19 +559,15 @@ export default function Dashboard() {
       // silent — optimistic update already applied
     }
 
-    setPreds((prev) =>
-      prev
-        ? {
-            ...prev,
-            items: prev.items.map((it) =>
-              it.id === id ? { ...it, label: it.label === label ? null : label } : it
-            ),
-          }
-        : prev
+    // Optimistic update on current page
+    setPredictions((prev) =>
+      prev.map((it) =>
+        it.id === id ? { ...it, label: it.label === label ? null : label } : it
+      )
     );
 
-    const qs = `date_from=${from}&date_to=${to}`;
-    fetch(`${API}/api/stats?${qs}`)
+    // Refresh stats only
+    fetch(`${API}/api/stats?date_from=${from}&date_to=${to}`)
       .then((r) => r.json() as Promise<Stats>)
       .then(setStats)
       .catch(() => {});
@@ -549,8 +577,6 @@ export default function Dashboard() {
     stats && stats.total_labeled > 0
       ? ((stats.corrections / stats.total_labeled) * 100).toFixed(1) + "%"
       : "—";
-
-  const totalPages: number = preds ? Math.ceil(preds.total / 30) : 1;
 
   const progressPct: number =
     stats && stats.total > 0
@@ -642,7 +668,7 @@ export default function Dashboard() {
             }}
           />
           <button
-            onClick={() => fetchAll(1)}
+            onClick={() => setPage(1)}
             disabled={loading}
             style={{
               fontSize: 12,
@@ -897,9 +923,9 @@ export default function Dashboard() {
           >
             <p style={{ margin: 0, fontWeight: 700, fontSize: 12, color: "#374151", letterSpacing: "0.05em" }}>
               LOG PREDIKSI{" "}
-              {preds && (
+              {totalItems > 0 && (
                 <span style={{ fontWeight: 400, color: "#9CA3AF", fontSize: 11 }}>
-                  ({fmt(preds.total)} total)
+                  ({fmt(totalItems)} total)
                 </span>
               )}
             </p>
@@ -908,13 +934,103 @@ export default function Dashboard() {
             </span>
           </div>
 
+          {/* Filter Buttons */}
+          <div
+            style={{
+              padding: "12px 18px",
+              borderBottom: "1px solid #F3F4F6",
+              display: "flex",
+              gap: 8,
+              flexWrap: "wrap",
+            }}
+          >
+            <button
+              onClick={() => handleFilterChange("all")}
+              style={{
+                fontSize: 12,
+                padding: "6px 14px",
+                borderRadius: 6,
+                border: filterStatus === "all" ? "1px solid #22C55E" : "1px solid #E5E7EB",
+                background: filterStatus === "all" ? "#EAF3DE" : "#F9FAFB",
+                color: filterStatus === "all" ? "#3B6D11" : "#374151",
+                fontWeight: filterStatus === "all" ? 600 : 500,
+                cursor: "pointer",
+                transition: "all 0.15s",
+              }}
+              onMouseEnter={(e) => {
+                if (filterStatus !== "all") {
+                  (e.target as HTMLButtonElement).style.background = "#F3F4F6";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (filterStatus !== "all") {
+                  (e.target as HTMLButtonElement).style.background = "#F9FAFB";
+                }
+              }}
+            >
+              Semua ({fmt(stats?.total ?? 0)})
+            </button>
+            <button
+              onClick={() => handleFilterChange("labeled")}
+              style={{
+                fontSize: 12,
+                padding: "6px 14px",
+                borderRadius: 6,
+                border: filterStatus === "labeled" ? "1px solid #22C55E" : "1px solid #E5E7EB",
+                background: filterStatus === "labeled" ? "#E6F1FB" : "#F9FAFB",
+                color: filterStatus === "labeled" ? "#185FA5" : "#374151",
+                fontWeight: filterStatus === "labeled" ? 600 : 500,
+                cursor: "pointer",
+                transition: "all 0.15s",
+              }}
+              onMouseEnter={(e) => {
+                if (filterStatus !== "labeled") {
+                  (e.target as HTMLButtonElement).style.background = "#F3F4F6";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (filterStatus !== "labeled") {
+                  (e.target as HTMLButtonElement).style.background = "#F9FAFB";
+                }
+              }}
+            >
+              Sudah Dilabeli ({fmt(stats?.total_labeled ?? 0)})
+            </button>
+            <button
+              onClick={() => handleFilterChange("unlabeled")}
+              style={{
+                fontSize: 12,
+                padding: "6px 14px",
+                borderRadius: 6,
+                border: filterStatus === "unlabeled" ? "1px solid #22C55E" : "1px solid #E5E7EB",
+                background: filterStatus === "unlabeled" ? "#FAEEDA" : "#F9FAFB",
+                color: filterStatus === "unlabeled" ? "#854F0B" : "#374151",
+                fontWeight: filterStatus === "unlabeled" ? 600 : 500,
+                cursor: "pointer",
+                transition: "all 0.15s",
+              }}
+              onMouseEnter={(e) => {
+                if (filterStatus !== "unlabeled") {
+                  (e.target as HTMLButtonElement).style.background = "#F3F4F6";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (filterStatus !== "unlabeled") {
+                  (e.target as HTMLButtonElement).style.background = "#F9FAFB";
+                }
+              }}
+            >
+              Belum Dilabeli ({fmt((stats?.total ?? 0) - (stats?.total_labeled ?? 0))})
+            </button>
+          </div>
+
           {loading && (
             <div style={{ textAlign: "center", padding: "40px 0", color: "#9CA3AF", fontSize: 13 }}>
               Memuat data...
             </div>
           )}
 
-          {!loading && preds && preds.items.length > 0 && (
+          {!loading && paginatedItems.length > 0 && (
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
@@ -941,7 +1057,7 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {preds.items.map((item) => (
+                  {paginatedItems.map((item) => (
                     <PredictionRow key={item.id} item={item} onLabel={handleLabel} onShowDetails={setSelectedItem} />
                   ))}
                 </tbody>
@@ -949,14 +1065,16 @@ export default function Dashboard() {
             </div>
           )}
 
-          {!loading && preds && preds.items.length === 0 && (
+          {!loading && paginatedItems.length === 0 && (
             <div style={{ textAlign: "center", padding: "48px 0", color: "#9CA3AF", fontSize: 13 }}>
-              Tidak ada data untuk rentang tanggal ini.
+              {filterStatus !== "all"
+                ? "Tidak ada data untuk filter yang dipilih."
+                : "Tidak ada data untuk rentang tanggal ini."}
             </div>
           )}
 
           {/* Pagination */}
-          {preds && totalPages > 1 && (
+          {totalPages > 1 && (
             <div
               style={{
                 padding: "10px 18px",
@@ -968,7 +1086,7 @@ export default function Dashboard() {
               }}
             >
               <button
-                onClick={() => fetchAll(page - 1)}
+                onClick={() => setPage(page - 1)}
                 disabled={page <= 1 || loading}
                 style={{
                   fontSize: 12,
@@ -986,8 +1104,30 @@ export default function Dashboard() {
               <span style={{ fontSize: 12, color: "#6B7280" }}>
                 Halaman {page} / {totalPages}
               </span>
+              <input
+                type="number"
+                min="1"
+                max={totalPages}
+                value={page}
+                onChange={(e) => {
+                  const newPage = Math.min(Math.max(1, parseInt(e.target.value) || 1), totalPages);
+                  setPage(newPage);
+                }}
+                style={{
+                  fontSize: 12,
+                  padding: "4px 8px",
+                  borderRadius: 4,
+                  border: "1px solid #E5E7EB",
+                  background: "#F9FAFB",
+                  color: "#374151",
+                  width: 50,
+                  textAlign: "center",
+                  outline: "none",
+                }}
+                title="Klik untuk ke halaman tertentu"
+              />
               <button
-                onClick={() => fetchAll(page + 1)}
+                onClick={() => setPage(page + 1)}
                 disabled={page >= totalPages || loading}
                 style={{
                   fontSize: 12,
