@@ -14,7 +14,7 @@ services:
       - API_URL=${API_URL:-http://localhost:8000}
     restart: unless-stopped
     networks:
-      - dashboard-network
+      - ojs-attack-detection-based-on-log_ojs-network
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
       interval: 30s
@@ -23,9 +23,5 @@ services:
       start_period: 5s
 
 networks:
-  dashboard-network:
-    driver: bridge
-    ipam:
-      driver: default
-      config:
-        - subnet: 172.20.0.0/16
+  ojs-attack-detection-based-on-log_ojs-network:
+    external: true
